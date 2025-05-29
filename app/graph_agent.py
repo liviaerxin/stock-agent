@@ -1,28 +1,33 @@
-from langgraph.graph import StateGraph, MessagesState, START, END
-from langchain_core.runnables import RunnableLambda
+# === Imports ===
 from typing import TypedDict, Annotated, Literal
-from langgraph.graph.message import add_messages
-from langgraph.prebuilt import ToolNode, InjectedState
-from langchain_core.messages import AIMessage, ToolMessage
-import pandas as pd
 from pathlib import Path
-from langgraph.types import Command, interrupt
-import json
 import uuid
-from langchain_core.tools import InjectedToolCallId, tool
-
-from langchain.chat_models import init_chat_model
+import json
+import pandas as pd
 from tenacity import retry, stop_after_attempt, wait_fixed
 
+from langchain_core.runnables import RunnableLambda
+from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.tools import InjectedToolCallId, tool
+
+from langgraph.graph import StateGraph, MessagesState, START, END
+from langgraph.graph.message import add_messages
+from langgraph.prebuilt import ToolNode
+from langgraph.types import Command
+
+from langchain.chat_models import init_chat_model
+
+# === App Imports ===
+from app import PERIOD, LLM_MODEL, NUM_NEWS, DATA_DIR
 from app.tools.analysis_tool import *
 from app.tools.stock_data_tool import *
 from app.tools.code_executer_tool import *
 from app.tools.email_tool import *
-from app import PERIOD, LLM_MODEL, NUM_NEWS, DATA_DIR
 
+# === Initialize LLM ===
 llm = init_chat_model(LLM_MODEL)
 
-# === LangGraph state ===
+# === Define Graph State ===
 class State(TypedDict):
     messages: Annotated[list, add_messages]
     stock_symbol: str
@@ -35,13 +40,14 @@ class State(TypedDict):
     stock_sentiment: str
     tool_status: bool
 
+# === Tool Wrap ===
 
 @tool
 def execute_python_code_tool(
     code: str,
     tool_call_id: Annotated[str, InjectedToolCallId],
 ):
-    """Executes Python code in a subprocess with timeout and isolation."""
+    """Execute Python code to analyze stock data."""
     result = execute_python_code(code)
 
     if result["status"] != "success" or not result["output"]:
@@ -69,7 +75,7 @@ def get_top_nasdaq_gainer_tool(
     # config: RunnableConfig,
     tool_call_id: Annotated[str, InjectedToolCallId],
 ):
-    """Get the NASDAQ stock with the highest percentage gain today."""
+    """Retrieve today's top NASDAQ stock gainer."""
     data = get_top_nasdaq_gainer()
 
     symbol = data.get("symbol")
@@ -103,8 +109,8 @@ def get_and_save_stock_data_tool(
     saved_path: str,
     tool_call_id: Annotated[str, InjectedToolCallId],
 ):
-    """Get stock HLCO and volume data in past days, then save to file,
-    period format 1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max,
+    """Download and save stock data to CSV.
+    period format is: 1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max,
     """
     data = get_and_save_stock_data(symbol, period)
 
@@ -250,8 +256,8 @@ def generate_sentiment_node(state: State):
 
 def generate_summary_node(state: State):
     generate_summary_system_prompt = """Generate a summary for the stock based on analysis and sentiment:
-    - List analysis data from: {analysis}
-    - Sentiment: {sentiment}
+    - List all analysis data from: {analysis}
+    - Give sentiment: {sentiment}
     - Use bulletin in body
     - Make the email subject and body to be user friendly
     - Send the summary via email
@@ -273,28 +279,24 @@ def generate_summary_node(state: State):
 # Conditional edge function to route to the tool node or end based upon whether the LLM made a tool call
 def should_continue(state: State) -> Literal["ACTION", "NEXT"]:
     """Decide if we should continue the loop or stop based upon whether the LLM made a tool call"""
-
     messages = state["messages"]
     last_message = messages[-1]
     # If the LLM makes a tool call, then perform an action
     if last_message.tool_calls:
         return "ACTION"
-    # Otherwise, we stop (reply to the user)
     else:
         return "NEXT"
 
 
 def route_after_tool(state: State) -> Literal["NEXT", "FALLBACK"]:
-    """Decide if we should continue the loop or stop based upon whether the LLM made a tool call"""
+    """Decide if we should continue next or use fallback"""
     if state["tool_status"]:
         return "NEXT"
-    # Otherwise, we stop (reply to the user)
     else:
         return "FALLBACK"
 
 
 # === Build the graph ===
-# graph = StateGraph(State)
 graph = StateGraph(State)
 
 # Add node
@@ -319,12 +321,10 @@ graph.add_edge("get_stock_data_node", "get_stock_data_tool_node")
 graph.add_edge("get_stock_data_tool_node", "generate_analysis_node")
 
 graph.add_edge("generate_analysis_node", "generate_analysis_tool_node")
-# graph.add_edge("generate_analysis_tool_node", "generate_analysis_fallback_node")
 graph.add_conditional_edges(
     "generate_analysis_tool_node",
     route_after_tool,
     {
-        # Name returned by should_continue : Name of next node to visit
         "NEXT": "generate_sentiment_node",
         "FALLBACK": "generate_analysis_fallback_node",
     },
@@ -335,16 +335,11 @@ graph.add_conditional_edges(
     "generate_sentiment_node",
     should_continue,
     {
-        # Name returned by should_continue : Name of next node to visit
         "NEXT": "generate_summary_node",
         "ACTION": "get_stock_news_tool_node",
     },
 )
 graph.add_edge("get_stock_news_tool_node", "generate_sentiment_node")
-
-# graph.add_edge("fallback_analysis_node", "generate_summary_node")
-
-# graph.add_edge("safe_code_execution_node", "generate_summary_node")
 graph.add_edge("generate_summary_node", "send_email_tool_node")
 graph.add_edge("send_email_tool_node", END)
 

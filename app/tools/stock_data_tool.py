@@ -11,7 +11,16 @@ from app import STOCK_SYMBOLS
 
 
 def get_top_nasdaq_gainer() -> dict:
-    """Get the NASDAQ stock with the highest percentage gain today."""
+    """
+    Get the NASDAQ stock with the highest percentage gain today.
+
+    Returns:
+        dict: {
+            "symbol": str,     # Stock symbol with highest gain
+            "pct": str,        # Percentage gain as string formatted to 2 decimals
+            "day": str         # Date string in ISO format (YYYY-MM-DD)
+        }
+    """
     if not STOCK_SYMBOLS:
         # Get NASDAQ-100 symbols from Wikipedia
         url = "https://en.wikipedia.org/wiki/NASDAQ-100"
@@ -40,13 +49,32 @@ def get_top_nasdaq_gainer() -> dict:
 
 
 def get_and_save_stock_data(symbol: str, period: str = "5d") -> pd.DataFrame:
-    """Get stock HLCO and volume data in past days"""
+    """
+    Fetch historical stock data (Open, High, Low, Close, Volume) for the given symbol.
+
+    Args:
+        symbol (str): Stock ticker symbol, e.g. "AAPL".
+        period (str, optional): Time period to fetch data for. Defaults to "5d".
+                               Examples: "1d", "5d", "1mo", "1y".
+    
+    Returns:
+        pd.DataFrame: DataFrame with historical OHLC and volume data.
+    """
     data = yf.Ticker(symbol).history(period=period)
     
     return data
 
 
 def get_stock_news(symbol: str, last_n_news:int=5) -> list:
-    """Get stock recent news headline"""
+    """
+    Fetch recent news headlines for the given stock symbol.
+
+    Args:
+        symbol (str): Stock ticker symbol, e.g. "AAPL".
+        last_n_news (int, optional): Number of recent news articles to retrieve. Defaults to 5.
+
+    Returns:
+        list: List of news items (dictionaries). Empty list if no news found.
+    """
     ticker = yf.Ticker(symbol)
     return ticker.news[-last_n_news:-1]

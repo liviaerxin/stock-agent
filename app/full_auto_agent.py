@@ -1,7 +1,5 @@
 from langchain.chat_models import init_chat_model
 from langgraph.prebuilt import create_react_agent, ToolNode
-from langgraph.checkpoint.memory import InMemorySaver
-from langchain_core.tools import Tool
 
 from app.tools.analysis_tool import *
 from app.tools.stock_data_tool import *
@@ -55,8 +53,6 @@ agent = create_react_agent(
     model=model,
     tools=tool_node,
     prompt=system_prompt,
-    # checkpointer=checkpointer,
-    # response_format=WeatherResponse,
 )
 
 

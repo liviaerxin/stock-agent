@@ -4,7 +4,7 @@ import json
 
 def execute_python_code(code: str) -> dict:
     """
-    Executes Python code in a subprocess with timeout and isolation.
+    Executes Python code in a subprocess with timeout and isolation. Expects the code to output a non-empty string.
     Returns a JSON string with status, output, and error if any.
     """
     try:

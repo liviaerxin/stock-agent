@@ -11,15 +11,17 @@ I implemented two versions of the agent using **LangGraph**, an advanced agent f
    - Created with `AgentExecutor` and a rich system prompt.
    - All logic and tool use are controlled through the prompt.
    - Simpler to implement, but less deterministic.
+   - Complex and large prompt
 
 ![alt text](./full-auto-agent.png)
 
 
-2. **🔬 Controlled ReAct-style Agent (Preferred)**  
+1. **🔬 Controlled ReAct-style Agent (Preferred)**  
    - Built using **LangGraph’s node-based design**.
    - Uses **explicit nodes** for each step (data fetching, analysis, reporting).
    - Data is passed via a `State` object for short-term memory.
    - Offers high reliability, easier debugging, and better control.
+   - Simply prompt
 
 ![alt text](./graph-agent.png)
 
