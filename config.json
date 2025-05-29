@@ -1,0 +1,8 @@
+{
+  "period": "5d",
+  "num_news": 5,
+  "from_email": "1yue8haogaoqi@gmail.com",
+  "to_emails": ["1yue8haogaoqi@gmail.com"],
+  "smtp_server": "smtp.gmail.com",
+  "llm_model": "openai:gpt-4.1-nano"
+}
