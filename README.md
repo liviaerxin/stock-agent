@@ -3,6 +3,8 @@
 
 An autonomous AI agent that identifies the top-performing NASDAQ stock for the day, analyzes its recent performance, performs sentiment analysis, and sends a summarized report via email.
 
+📄 [Project Report](./report.md)
+
 ## 🚀 Features
 
 - ✅ Identifies top NASDAQ gainer (by % increase)
