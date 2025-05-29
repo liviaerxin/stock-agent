@@ -74,8 +74,12 @@ python main.py --full-auto
 
 ---
 
-## 🧪 Example Output
+## 🧪 Email View
 
+:<img width="977" alt="Screenshot 2025-05-29 at 6 23 18 AM" src="https://github.com/user-attachments/assets/16165738-140f-4182-a6fc-35d924b23bd6" />
+
+
+## Example Output
 ```bash
 python main.py
 ```
