@@ -5,23 +5,29 @@
 
 ### 🧱 Chosen Framework & Architecture
 
-I implemented two versions of the agent using **LangGraph**, an advanced agent framework based on LangChain:
+For this project, I chose LangGraph, a graph-based agent orchestration framework built on LangChain. LangGraph enables fine-grained control over agent behavior, tool integration, and workflow transitions by treating each tool, agent, and logic block as a node in a stateful execution graph.
 
-1. **🧭 Fully Autonomous Agent**  
+1. **🧭 Fully Autonomous Agent**: A single agent plans and performs all tasks end-to-end (data retrieval, analysis, summarization):
+   - Simple, fast development and prototype.
    - Created with `AgentExecutor` and a rich system prompt.
    - All logic and tool use are controlled through the prompt.
    - Simpler to implement, but less deterministic.
    - Complex and large prompt
 
+Agent Planning and Execution Flow:
+
 ![alt text](./full-auto-agent.png)
 
 
-1. **🔬 Controlled ReAct-style Agent (Preferred)**  
+1. **🔬 Controlled ReAct-style Agent (Preferred)**: A sequence of specialized agents and tool nodes coordinated in a LangGraph workflow with explicit state management and error recovery paths:
    - Built using **LangGraph’s node-based design**.
    - Uses **explicit nodes** for each step (data fetching, analysis, reporting).
    - Data is passed via a `State` object for short-term memory.
+   - Configure `period`, `to_emails` for data consistency.
    - Offers high reliability, easier debugging, and better control.
    - Simply prompt
+
+Agent Planning and Execution Flow:
 
 ![alt text](./graph-agent.png)
 
@@ -60,7 +66,7 @@ Each node in the graph represents a specific tool or logic unit. The workflow is
 ```python
 State = {
     "symbol": "NVDA",
-    "stock_sentiment_analysis": str,
+    "stock_analysis": str,
     "stock_sentiment": str,
     ...
 }
@@ -91,7 +97,7 @@ This ensures clean, traceable transitions and makes it easy to rerun or debug no
 
 - **📦 Data Acquisition** – Selects top NASDAQ gainer.
 - **⚙️ Dynamic Code Gen & Execution** – LLM + Python tool for analysis.
-- **📧 Email Summary** – Sends formatted report to a configurable recipient.
+- **📧 Email Summary** – LLM + Sends formatted report to a configurable recipient.
 
 ### 🌟 Additional Features
 
@@ -105,12 +111,19 @@ This ensures clean, traceable transitions and makes it easy to rerun or debug no
 
 ## 🚧 Challenges & Solutions
 
-| Challenge                          | Solution                                                                     |
-|------------------------------------|------------------------------------------------------------------------------|
-| 🔄 **Inconsistent LLM Tool Calls** | Switched to **graph-based flow** for deterministic behavior.                 |
-| ⚠️ **Code Gen Output Quality**      | Added prompt tuning                                                          |
-| 🧩 **Tool Failures / Exceptions**  | Wrapped calls with retry logic and added a fallback node.                    |
-| 🔗 **State Synchronization**       | Wrapped tools, Centralized state object for clean transitions between nodes. |
+
+1. Tool Argument Validation
+   - Problem: Autonomous agents generate tool arguments, which may cause data security like `email sender` exposed out and errors if missing or not pre-validated.
+	- Solution: Used stateful Node that can read state or config for keeping data consistency and security.
+
+
+2. Prompt Management
+   - Problem: Autonomous agents required strong, complex prompts to handle diverse tasks, which may fail and not consistent.
+	- Solution: Used clear, dedicated prompts in controlled agents for each modular agent, prompts are more focused and stable.
+
+3. Graph Modularity vs. Simplicity
+	- Tradeoff: Full autonomy simplifies wiring but increases brittleness; LangGraph modularity increases control but requires more boilerplate.
+	- Outcome: Both were implemented to show tradeoffs clearly.
 
 ---
 
@@ -142,13 +155,10 @@ This ensures clean, traceable transitions and makes it easy to rerun or debug no
    - Add explicit validation on fetched stock data.
    - Implement **generic fallback paths** for network/API errors.
 
-3. **🔄 Agent Refinement**  
-   - Let the agent detect issues and **self-refine** its tool usage or prompt (e.g., when data is ambiguous).
-
-4. **📊 Richer Reporting**  
+3. **📊 Richer Reporting**  
    - Include **graphical charts**, links to stock data, or even HTML-formatted emails with interactive elements.
 
-5. **📊 Richer Reporting**  
+4. **📊 Richer Reporting**  
    - Multiple agents.
 
 ## 🧾 Summary

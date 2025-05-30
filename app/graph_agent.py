@@ -2,7 +2,7 @@
 from typing import TypedDict, Annotated, Literal
 from pathlib import Path
 import uuid
-import json
+import os
 import pandas as pd
 from tenacity import retry, stop_after_attempt, wait_fixed
 
@@ -14,134 +14,33 @@ from langgraph.graph import StateGraph, MessagesState, START, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 from langgraph.types import Command
+from langchain_core.runnables import RunnableConfig
 
 from langchain.chat_models import init_chat_model
 
 # === App Imports ===
-from app import PERIOD, LLM_MODEL, NUM_NEWS, DATA_DIR
-from app.tools.analysis_tool import *
-from app.tools.stock_data_tool import *
-from app.tools.code_executer_tool import *
-from app.tools.email_tool import *
+from . import config
+from .tools.graph_agent_tools import (
+    State,
+    ConfigSchema,
+    get_top_nasdaq_gainer_tool,
+    get_and_save_stock_data_tool,
+    execute_python_code_tool,
+    send_email_tool,
+)
+from .tools.core.stock_data import get_stock_news
+from .tools.core.analysis import generate_analysis_fallback
 
 # === Initialize LLM ===
-llm = init_chat_model(LLM_MODEL)
+llm = init_chat_model(config.LLM_MODEL)
 
-# === Define Graph State ===
-class State(TypedDict):
-    messages: Annotated[list, add_messages]
-    stock_symbol: str
-    stock_pct: float
-    day: str
-    period: str
-    stock_data: pd.DataFrame
-    stock_data_saved_path: str
-    stock_analysis: str
-    stock_sentiment: str
-    tool_status: bool
-
-# === Tool Wrap ===
-
-@tool
-def execute_python_code_tool(
-    code: str,
-    tool_call_id: Annotated[str, InjectedToolCallId],
-):
-    """Execute Python code to analyze stock data."""
-    result = execute_python_code(code)
-
-    if result["status"] != "success" or not result["output"]:
-        return Command(
-            update={
-                "tool_status": False,
-                "messages": [ToolMessage("Fail", tool_call_id=tool_call_id)],
-            }
-        )
-    else:
-        return Command(
-            update={
-                "tool_status": True,
-                "stock_analysis": result["output"],
-                "messages": [ToolMessage(result["output"], tool_call_id=tool_call_id)],
-            }
-        )
-
-
-@tool
-def get_top_nasdaq_gainer_tool(
-    # # access information that's dynamically updated inside the agent
-    # state: Annotated[State, InjectedState],
-    # # access static data that is passed at agent invocation
-    # config: RunnableConfig,
-    tool_call_id: Annotated[str, InjectedToolCallId],
-):
-    """Retrieve today's top NASDAQ stock gainer."""
-    data = get_top_nasdaq_gainer()
-
-    symbol = data.get("symbol")
-    day = data.get("day")
-    pct = data.get("pct")
-
-    state_update = {
-        "stock_symbol": symbol,
-        "stock_pct": pct,
-        "day": day,
-    }
-
-    # We return a Command object in the tool to update our state.
-    return Command(
-        update={
-            "stock_symbol": symbol,
-            "stock_pct": pct,
-            "day": day,
-            # update the message history
-            "messages": [
-                ToolMessage("Successfully get the stock symbol" + json.dumps(state_update), tool_call_id=tool_call_id)
-            ],
-        }
-    )
-
-
-@tool
-def get_and_save_stock_data_tool(
-    symbol: str,
-    period: str,
-    saved_path: str,
-    tool_call_id: Annotated[str, InjectedToolCallId],
-):
-    """Download and save stock data to CSV.
-    period format is: 1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max,
-    """
-    data = get_and_save_stock_data(symbol, period)
-
-    data.to_csv(saved_path, index=True)
-
-    state_update = {
-        "stock_data": data.to_dict(),
-        "stock_data_saved_path": saved_path,
-    }
-
-    # We return a Command object in the tool to update our state.
-    return Command(
-        update={
-            # "stock_data": data.to_dict(),
-            "stock_data_saved_path": saved_path,
-            # update the message history
-            "messages": [
-                ToolMessage(
-                    "Successfully get and save the stock data" + json.dumps({"stock_data_saved_path": saved_path}),
-                    tool_call_id=tool_call_id,
-                )
-            ],
-        }
-    )
 
 # === Graph Nodes ===
 get_stock_symbol_tool_node = ToolNode([get_top_nasdaq_gainer_tool], name="get_stock_symbol_tool_node")
 get_stock_data_tool_node = ToolNode([get_and_save_stock_data_tool], name="get_stock_data_tool_node")
 generate_analysis_tool_node = ToolNode([execute_python_code_tool], name="generate_analysis_tool_node")
 get_stock_news_tool_node = ToolNode([get_stock_news], name="get_stock_news_tool_node")
-send_email_tool_node = ToolNode([send_email], name="send_email_tool_node")
+send_email_tool_node = ToolNode([send_email_tool], name="send_email_tool_node")
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
@@ -160,13 +59,15 @@ def get_stock_symbol_node(state: State):
 
     return {"messages": [response]}
 
+
 @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
-def get_stock_data_node(state: State):
-    stock_data_saved_path = Path(DATA_DIR).joinpath("{}.csv".format(uuid.uuid4()))
+def get_stock_data_node(state: State, config: RunnableConfig):
+    stock_data_saved_path = os.path.join(config["configurable"]["data_dir"], str(uuid.uuid4()))
+
     system_prompt = """
-    - Get the stock{symbol} past {period} days data and save to {saved_path}
+    - Get the stock {symbol} past {period} days data and save to {saved_path}
     """.format(
-        symbol=state["stock_symbol"], period=state["period"], saved_path=stock_data_saved_path
+        symbol=state["stock_symbol"], period=config["configurable"]["period"], saved_path=stock_data_saved_path
     )
 
     system_message = {
@@ -180,7 +81,7 @@ def get_stock_data_node(state: State):
     return {"messages": [response]}
 
 
-def generate_analysis_node(state: State):
+def generate_analysis_node(state: State, config: RunnableConfig):
     generate_code_system_prompt = """Write Python code to analyze the stock {stock_symbol}:
     - The last {period} trading days is in {stock_data_saved_path} file, you can use `pandas` to load the csv file, index is `Date`.
     - Calculate average daily change
@@ -202,7 +103,9 @@ def generate_analysis_node(state: State):
 
     Only return Python code. No explanation.
         """.format(
-        stock_symbol=state["stock_symbol"], period=state["period"] ,stock_data_saved_path=state["stock_data_saved_path"]
+        stock_symbol=state["stock_symbol"],
+        period=config["configurable"]["period"],
+        stock_data_saved_path=state["stock_data_saved_path"],
     )
 
     # print(generate_code_system_prompt)
@@ -216,12 +119,13 @@ def generate_analysis_node(state: State):
 
     return {"messages": [response]}
 
-def generate_analysis_fallback_node(state: State):
+
+def generate_analysis_fallback_node(state: State, config: RunnableConfig):
     tool_call = {
         "name": "generate_analysis_fallback",
         "args": {
             "stock_symbol": state["stock_symbol"],
-            "period": state["period"],
+            "period": config["configurable"]["period"],
         },
         "id": str(uuid.uuid4()),
         "type": "tool_call",
@@ -235,12 +139,12 @@ def generate_analysis_fallback_node(state: State):
     return {"messages": [tool_call_message, tool_message, response], "stock_analysis": tool_message.content}
 
 
-def generate_sentiment_node(state: State):
+def generate_sentiment_node(state: State, config: RunnableConfig):
     generate_sentiment_system_prompt = """Generate a sentiment the stock {symbol}:
     - Get the stock recent {num_news} news headlines
     """.format(
         symbol=state["stock_symbol"],
-        num_news=NUM_NEWS,
+        num_news=config["configurable"]["num_news"],
     )
 
     system_message = {
@@ -256,8 +160,8 @@ def generate_sentiment_node(state: State):
 
 def generate_summary_node(state: State):
     generate_summary_system_prompt = """Generate a summary for the stock based on analysis and sentiment:
-    - List all analysis data from: {analysis}
-    - Give sentiment: {sentiment}
+    - Include all the analysis data from: {analysis}, including the close prices, etc.
+    - Give a sentiment: {sentiment}
     - Use bulletin in body
     - Make the email subject and body to be user friendly
     - Send the summary via email
@@ -270,7 +174,7 @@ def generate_summary_node(state: State):
         "content": generate_summary_system_prompt,
     }
 
-    llm_with_tools = llm.bind_tools([send_email], tool_choice="any")
+    llm_with_tools = llm.bind_tools([send_email_tool], tool_choice="any")
     response = llm_with_tools.invoke([system_message] + state["messages"])
 
     return {"messages": [response]}
@@ -289,68 +193,77 @@ def should_continue(state: State) -> Literal["ACTION", "NEXT"]:
 
 
 def route_after_tool(state: State) -> Literal["NEXT", "FALLBACK"]:
-    """Decide if we should continue next or use fallback"""
     if state["tool_status"]:
         return "NEXT"
     else:
         return "FALLBACK"
 
 
-# === Build the graph ===
-graph = StateGraph(State)
+def build_graph():
+    # === Build the graph ===
+    graph = StateGraph(State, config_schema=ConfigSchema)
 
-# Add node
-graph.add_node("get_stock_symbol_node", get_stock_symbol_node)
-graph.add_node("get_stock_symbol_tool_node", get_stock_symbol_tool_node)
-graph.add_node("get_stock_data_node", get_stock_data_node)
-graph.add_node("get_stock_data_tool_node", get_stock_data_tool_node)
-graph.add_node("generate_analysis_node", generate_analysis_node)
-graph.add_node("generate_analysis_tool_node", generate_analysis_tool_node)
-graph.add_node("generate_summary_node", generate_summary_node)
-graph.add_node("send_email_tool_node", send_email_tool_node)
-graph.add_node("generate_analysis_fallback_node", generate_analysis_fallback_node)
-graph.add_node("generate_sentiment_node", generate_sentiment_node)
-graph.add_node("get_stock_news_tool_node", get_stock_news_tool_node)
+    # Add node
+    graph.add_node("get_stock_symbol_node", get_stock_symbol_node)
+    graph.add_node("get_stock_symbol_tool_node", get_stock_symbol_tool_node)
+    graph.add_node("get_stock_data_node", get_stock_data_node)
+    graph.add_node("get_stock_data_tool_node", get_stock_data_tool_node)
+    graph.add_node("generate_analysis_node", generate_analysis_node)
+    graph.add_node("generate_analysis_tool_node", generate_analysis_tool_node)
+    graph.add_node("generate_summary_node", generate_summary_node)
+    graph.add_node("send_email_tool_node", send_email_tool_node)
+    graph.add_node("generate_analysis_fallback_node", generate_analysis_fallback_node)
+    graph.add_node("generate_sentiment_node", generate_sentiment_node)
+    graph.add_node("get_stock_news_tool_node", get_stock_news_tool_node)
 
+    # Add edges to connect nodes
+    graph.add_edge(START, "get_stock_symbol_node")
+    graph.add_edge("get_stock_symbol_node", "get_stock_symbol_tool_node")
+    graph.add_edge("get_stock_symbol_tool_node", "get_stock_data_node")
+    graph.add_edge("get_stock_data_node", "get_stock_data_tool_node")
+    graph.add_edge("get_stock_data_tool_node", "generate_analysis_node")
 
-# Add edges to connect nodes
-graph.add_edge(START, "get_stock_symbol_node")
-graph.add_edge("get_stock_symbol_node", "get_stock_symbol_tool_node")
-graph.add_edge("get_stock_symbol_tool_node", "get_stock_data_node")
-graph.add_edge("get_stock_data_node", "get_stock_data_tool_node")
-graph.add_edge("get_stock_data_tool_node", "generate_analysis_node")
+    graph.add_edge("generate_analysis_node", "generate_analysis_tool_node")
+    graph.add_conditional_edges(
+        "generate_analysis_tool_node",
+        route_after_tool,
+        {
+            "NEXT": "generate_sentiment_node",
+            "FALLBACK": "generate_analysis_fallback_node",
+        },
+    )
+    graph.add_edge("generate_analysis_fallback_node", "generate_sentiment_node")
 
-graph.add_edge("generate_analysis_node", "generate_analysis_tool_node")
-graph.add_conditional_edges(
-    "generate_analysis_tool_node",
-    route_after_tool,
-    {
-        "NEXT": "generate_sentiment_node",
-        "FALLBACK": "generate_analysis_fallback_node",
-    },
-)
-graph.add_edge("generate_analysis_fallback_node", "generate_sentiment_node")
+    graph.add_conditional_edges(
+        "generate_sentiment_node",
+        should_continue,
+        {
+            "NEXT": "generate_summary_node",
+            "ACTION": "get_stock_news_tool_node",
+        },
+    )
+    graph.add_edge("get_stock_news_tool_node", "generate_sentiment_node")
+    graph.add_edge("generate_summary_node", "send_email_tool_node")
+    graph.add_edge("send_email_tool_node", END)
 
-graph.add_conditional_edges(
-    "generate_sentiment_node",
-    should_continue,
-    {
-        "NEXT": "generate_summary_node",
-        "ACTION": "get_stock_news_tool_node",
-    },
-)
-graph.add_edge("get_stock_news_tool_node", "generate_sentiment_node")
-graph.add_edge("generate_summary_node", "send_email_tool_node")
-graph.add_edge("send_email_tool_node", END)
-
-# Compile the graph and run
-agent = graph.compile()
+    # Compile the graph and run
+    return graph.compile()
 
 
 if __name__ == "__main__":
+    agent = build_graph()
     for step in agent.stream(
-        {"messages": [], "period": PERIOD},
-        # config,
+        {"messages": []},
+        config={
+            "configurable": {
+                "period": config.PERIOD,
+                "from_email": config.FROM_EMAIL,
+                "to_emails": config.TO_EMAILS,
+                "smtp_server": config.SMTP_SERVER,
+                "num_news": config.NUM_NEWS,
+                "data_dir": config.DATA_DIR,
+            }
+        },
         stream_mode="values",
     ):
         # print(step)

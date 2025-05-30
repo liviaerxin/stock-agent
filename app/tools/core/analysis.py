@@ -1,13 +1,7 @@
-from langchain.tools import tool
-
 import json
 from langchain.chat_models import init_chat_model
-from langchain_core.prompts import PromptTemplate
-from app import PERIOD, LLM_MODEL
+from app import config
 import yfinance as yf
-
-llm = init_chat_model(LLM_MODEL)
-
 
 def generate_stock_analysis_code(stock_symbol: str) -> str:
     """Generates Python code to analyze a stock
@@ -26,7 +20,7 @@ def generate_stock_analysis_code(stock_symbol: str) -> str:
       - List close prices in the period.
       - Output analysis as a JSON dictionary printed at the end.
     """
-    prompt = """Write Python code to analyze stock {stock_symbol}:
+    prompt = """Write Python code to analyze stock {symbol}:
     - Analyze past {period} days data
     - Calculate average daily change
     - Calculate volatility (std deviation of Daily Changes)
@@ -45,9 +39,10 @@ def generate_stock_analysis_code(stock_symbol: str) -> str:
     ```
     - At the code end, print out the analysis using `print()`.
     """.format(
-        symbol=stock_symbol, period=PERIOD
+        symbol=stock_symbol, period=config.PERIOD
     )
 
+    llm = init_chat_model(config.LLM_MODEL)
     msg = llm.invoke(prompt)
     return msg.content
 
@@ -59,26 +54,26 @@ def generate_stock_analysis_code_default(stock_symbol: str) -> str:
 import yfinance as yf
 
 try:
-    stock = yf.Ticker("{stock_symbol}")
+    stock = yf.Ticker("{symbol}")
     hist = stock.history(period='1mo')
     latest_close = hist['Close'][-1]
     previous_close = hist['Close'][-2]
     change = latest_close - previous_close
     change_percent = (change / previous_close) * 100
-    analysis = f"{stock_symbol}recent performance: {{change}}"
+    analysis = f"{symbol}recent performance: {{change}}"
 
 except Exception as e:
     analysis = f"Error during analysis: {{str(e)}}"
 print(analysis)
     """.format(
-        stock_symbol
+        symbol=stock_symbol
     )
 
     return code
 
 
 def generate_analysis_fallback(stock_symbol: str, period: str = "5d") -> str:
-    """Generate a fallback stock analysis if the LLM or agent or code execution fails.
+    """Generate a fallback analysis for the stock if the LLM generated code execution fails.
     Args:
         symbol (str): Stock ticker symbol, e.g. "AAPL".
         period (str, optional): Time period to fetch data for. Defaults to "5d".
@@ -113,6 +108,3 @@ def generate_analysis_fallback(stock_symbol: str, period: str = "5d") -> str:
         "close_prices": last_5_days["Close"].tolist(),
     }
     return json.dumps(result)
-
-
-# print(generate_stock_analysis_code("TSLA"))
