@@ -80,6 +80,9 @@ python main.py --full-auto
 
 
 ## Example Output
+
+Controlled agent,
+
 ```bash
 python main.py
 ```
@@ -236,6 +239,9 @@ Name: send_email
 
 Email sent successfully.
 <pre>
+```
+
+Full autonomous agent,
 
 ```bash
 python main.py --full-auto
