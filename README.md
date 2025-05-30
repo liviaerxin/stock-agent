@@ -40,7 +40,7 @@ An autonomous AI agent that identifies the top-performing NASDAQ stock for the d
 
 ### 2. 📦 Prepare Stock Symbol Data
 
-Before running the agent, fetch and save NASDAQ stock symbols:
+[Option] Before running the agent, you can fetch and save NASDAQ stock symbols. You also can skip to let it fetch in agent running time:
 
 ```bash
 python download_save_stock_symbols.py
