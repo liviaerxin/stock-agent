@@ -18,7 +18,10 @@ An autonomous AI agent that identifies the top-performing NASDAQ stock for the d
 
 ## 🛠️ Getting Started
 
+**Python 3.10+** is required.
+
 ### 1. 🔧 Setup
+
 
 1. Install dependencies:
    ```bash
