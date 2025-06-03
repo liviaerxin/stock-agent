@@ -391,3 +391,10 @@ Email sent successfully.
 
 The analysis and news summary for Warner Bros. Discovery (WBD) has been completed and sent via email. If you need further assistance, feel free to ask!
 ```
+
+
+## TODO:
+
+[ChatGPT - LangGraph Data Validation](https://chatgpt.com/share/683d10c2-a62c-8013-9a40-73441483ca4e)
+
+[ChatGPT - LangGraph AI Agent Best Practices](https://chatgpt.com/share/683d1113-d4a8-8013-92c0-1fb45ed5b243)
