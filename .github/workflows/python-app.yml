@@ -16,7 +16,9 @@ jobs:
   build:
 
     runs-on: ubuntu-latest
-
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}  # Inject as environment variable
+      EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}  # Inject as environment variable
     steps:
     - uses: actions/checkout@v4
     - name: Set up Python 3.10
